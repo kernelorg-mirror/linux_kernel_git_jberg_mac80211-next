@@ -3891,6 +3891,10 @@ enum nl80211_ap_sme_features {
  *	interface. An active monitor interface behaves like a normal monitor
  *	interface, but gets added to the driver. It ensures that incoming
  *	unicast packets directed at the configured interface address get ACKed.
+ * @NL80211_FEATURE_DELETE_KEYS_DURING_ROAMING: If this feature flag is set,
+ *	the driver doesn't require key clearing before roaming (via either
+ *	the ROAM or AUTHENTICATE commands, but will clear all keys itself.
+ *	If userspace doesn't clear keys, roaming speed can be improved.
  */
 enum nl80211_feature_flags {
 	NL80211_FEATURE_SK_TX_STATUS			= 1 << 0,
@@ -3911,6 +3915,7 @@ enum nl80211_feature_flags {
 	NL80211_FEATURE_FULL_AP_CLIENT_STATE		= 1 << 15,
 	NL80211_FEATURE_USERSPACE_MPM			= 1 << 16,
 	NL80211_FEATURE_ACTIVE_MONITOR			= 1 << 17,
+	NL80211_FEATURE_DELETE_KEYS_DURING_ROAMING	= 1 << 18,
 };
 
 /**
