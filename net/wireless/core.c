@@ -664,6 +664,34 @@ int wiphy_register(struct wiphy *wiphy)
 		return -EINVAL;
 #endif
 
+	if (WARN_ON(wiphy->pmsr_capa && !wiphy->pmsr_capa->ftm.supported))
+		return -EINVAL;
+
+	if (wiphy->pmsr_capa && wiphy->pmsr_capa->ftm.supported) {
+		if (WARN_ON(!wiphy->pmsr_capa->ftm.asap &&
+			    !wiphy->pmsr_capa->ftm.non_asap))
+			return -EINVAL;
+		if (WARN_ON(!wiphy->pmsr_capa->ftm.preambles ||
+			    !wiphy->pmsr_capa->ftm.bandwidths))
+			return -EINVAL;
+		if (WARN_ON(wiphy->pmsr_capa->ftm.preambles &
+				~(BIT(NL80211_PREAMBLE_LEGACY) |
+				  BIT(NL80211_PREAMBLE_HT) |
+				  BIT(NL80211_PREAMBLE_VHT) |
+				  BIT(NL80211_PREAMBLE_DMG))))
+			return -EINVAL;
+		if (WARN_ON(wiphy->pmsr_capa->ftm.bandwidths &
+				~(BIT(NL80211_CHAN_WIDTH_20_NOHT) |
+				  BIT(NL80211_CHAN_WIDTH_20) |
+				  BIT(NL80211_CHAN_WIDTH_40) |
+				  BIT(NL80211_CHAN_WIDTH_80) |
+				  BIT(NL80211_CHAN_WIDTH_80P80) |
+				  BIT(NL80211_CHAN_WIDTH_160) |
+				  BIT(NL80211_CHAN_WIDTH_5) |
+				  BIT(NL80211_CHAN_WIDTH_10))))
+			return -EINVAL;
+	}
+
 	/*
 	 * if a wiphy has unsupported modes for regulatory channel enforcement,
 	 * opt-out of enforcement checking
@@ -1161,6 +1189,7 @@ void cfg80211_init_wdev(struct cfg80211_registered_device *rdev,
 	spin_lock_init(&wdev->event_lock);
 	INIT_LIST_HEAD(&wdev->mgmt_registrations);
 	spin_lock_init(&wdev->mgmt_registrations_lock);
+	INIT_LIST_HEAD(&wdev->pmsr_list);
 
 	/*
 	 * We get here also when the interface changes network namespaces,
