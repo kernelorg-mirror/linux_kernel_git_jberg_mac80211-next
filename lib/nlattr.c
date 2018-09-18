@@ -68,6 +68,11 @@ static int validate_nla_bitfield32(const struct nlattr *nla,
 	return 0;
 }
 
+static int nla_validate_parse(const struct nlattr *head, int len, int maxtype,
+			      const struct nla_policy *policy,
+			      struct netlink_ext_ack *extack, bool *extack_set,
+			      struct nlattr **tb);
+
 static int validate_nla(const struct nlattr *nla, int maxtype,
 			const struct nla_policy *policy,
 			struct netlink_ext_ack *extack, bool *extack_set)
@@ -149,6 +154,18 @@ static int validate_nla(const struct nlattr *nla, int maxtype,
 		 */
 		if (attrlen == 0)
 			break;
+		if (attrlen < NLA_HDRLEN)
+			return -ERANGE;
+		if (pt->validation_data) {
+			int err;
+
+			err = nla_validate_parse(nla_data(nla), nla_len(nla),
+						 pt->len, pt->validation_data,
+						 extack, extack_set, NULL);
+			if (err < 0)
+				return err;
+		}
+		break;
 	default:
 		if (pt->len)
 			minlen = pt->len;
