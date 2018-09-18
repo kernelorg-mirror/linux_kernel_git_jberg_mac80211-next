@@ -70,7 +70,7 @@ static int validate_nla_bitfield32(const struct nlattr *nla,
 
 static int validate_nla(const struct nlattr *nla, int maxtype,
 			const struct nla_policy *policy,
-			const char **error_msg)
+			struct netlink_ext_ack *extack, bool *extack_set)
 {
 	const struct nla_policy *pt;
 	int minlen = 0, attrlen = nla_len(nla), type = nla_type(nla);
@@ -95,8 +95,11 @@ static int validate_nla(const struct nlattr *nla, int maxtype,
 		break;
 
 	case NLA_REJECT:
-		if (pt->validation_data && error_msg)
-			*error_msg = pt->validation_data;
+		if (pt->validation_data && extack && !*extack_set) {
+			*extack_set = true;
+			extack->_msg = pt->validation_data;
+			NL_SET_BAD_ATTR(extack, nla);
+		}
 		return -EINVAL;
 
 	case NLA_FLAG:
@@ -161,24 +164,25 @@ static int validate_nla(const struct nlattr *nla, int maxtype,
 
 static int nla_validate_parse(const struct nlattr *head, int len, int maxtype,
 			      const struct nla_policy *policy,
-			      struct netlink_ext_ack *extack,
+			      struct netlink_ext_ack *extack, bool *extack_set,
 			      struct nlattr **tb)
 {
 	const struct nlattr *nla;
 	int rem;
 
 	nla_for_each_attr(nla, head, len, rem) {
-		static const char _msg[] = "Attribute failed policy validation";
-		const char *msg = _msg;
 		u16 type = nla_type(nla);
 
 		if (policy) {
-			int err = validate_nla(nla, maxtype, policy, &msg);
+			int err = validate_nla(nla, maxtype, policy,
+					       extack, extack_set);
 
 			if (err < 0) {
-				if (extack)
-					extack->_msg = msg;
-				NL_SET_BAD_ATTR(extack, nla);
+				if (!*extack_set) {
+					*extack_set = true;
+					NL_SET_ERR_MSG_ATTR(extack, nla,
+							    "Attribute failed policy validation");
+				}
 				return err;
 			}
 		}
@@ -208,9 +212,11 @@ int nla_validate(const struct nlattr *head, int len, int maxtype,
 		 const struct nla_policy *policy,
 		 struct netlink_ext_ack *extack)
 {
+	bool extack_set = false;
 	int rem;
 
-	rem = nla_validate_parse(head, len, maxtype, policy, extack, NULL);
+	rem = nla_validate_parse(head, len, maxtype, policy,
+				 extack, &extack_set, NULL);
 
 	if (rem < 0)
 		return rem;
@@ -267,11 +273,13 @@ int nla_parse(struct nlattr **tb, int maxtype, const struct nlattr *head,
 	      int len, const struct nla_policy *policy,
 	      struct netlink_ext_ack *extack)
 {
+	bool extack_set = false;
 	int rem;
 
 	memset(tb, 0, sizeof(struct nlattr *) * (maxtype + 1));
 
-	rem = nla_validate_parse(head, len, maxtype, policy, extack, tb);
+	rem = nla_validate_parse(head, len, maxtype, policy,
+				 extack, &extack_set, tb);
 	if (rem < 0)
 		return rem;
 
