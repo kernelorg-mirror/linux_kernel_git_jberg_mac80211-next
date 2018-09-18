@@ -159,6 +159,37 @@ static int validate_nla(const struct nlattr *nla, int maxtype,
 	return 0;
 }
 
+static int nla_validate_parse(const struct nlattr *head, int len, int maxtype,
+			      const struct nla_policy *policy,
+			      struct netlink_ext_ack *extack,
+			      struct nlattr **tb)
+{
+	const struct nlattr *nla;
+	int rem;
+
+	nla_for_each_attr(nla, head, len, rem) {
+		static const char _msg[] = "Attribute failed policy validation";
+		const char *msg = _msg;
+		u16 type = nla_type(nla);
+
+		if (policy) {
+			int err = validate_nla(nla, maxtype, policy, &msg);
+
+			if (err < 0) {
+				if (extack)
+					extack->_msg = msg;
+				NL_SET_BAD_ATTR(extack, nla);
+				return err;
+			}
+		}
+
+		if (tb && type > 0 && type <= maxtype)
+			tb[type] = (struct nlattr *)nla;
+	}
+
+	return rem;
+}
+
 /**
  * nla_validate - Validate a stream of attributes
  * @head: head of attribute stream
@@ -177,21 +208,12 @@ int nla_validate(const struct nlattr *head, int len, int maxtype,
 		 const struct nla_policy *policy,
 		 struct netlink_ext_ack *extack)
 {
-	const struct nlattr *nla;
 	int rem;
 
-	nla_for_each_attr(nla, head, len, rem) {
-		static const char _msg[] = "Attribute failed policy validation";
-		const char *msg = _msg;
-		int err = validate_nla(nla, maxtype, policy, &msg);
+	rem = nla_validate_parse(head, len, maxtype, policy, extack, NULL);
 
-		if (err < 0) {
-			if (extack)
-				extack->_msg = msg;
-			NL_SET_BAD_ATTR(extack, nla);
-			return err;
-		}
-	}
+	if (rem < 0)
+		return rem;
 
 	return 0;
 }
@@ -245,39 +267,19 @@ int nla_parse(struct nlattr **tb, int maxtype, const struct nlattr *head,
 	      int len, const struct nla_policy *policy,
 	      struct netlink_ext_ack *extack)
 {
-	const struct nlattr *nla;
-	int rem, err;
+	int rem;
 
 	memset(tb, 0, sizeof(struct nlattr *) * (maxtype + 1));
 
-	nla_for_each_attr(nla, head, len, rem) {
-		u16 type = nla_type(nla);
-
-		if (type > 0 && type <= maxtype) {
-			static const char _msg[] = "Attribute failed policy validation";
-			const char *msg = _msg;
-
-			if (policy) {
-				err = validate_nla(nla, maxtype, policy, &msg);
-				if (err < 0) {
-					NL_SET_BAD_ATTR(extack, nla);
-					if (extack)
-						extack->_msg = msg;
-					goto errout;
-				}
-			}
-
-			tb[type] = (struct nlattr *)nla;
-		}
-	}
+	rem = nla_validate_parse(head, len, maxtype, policy, extack, tb);
+	if (rem < 0)
+		return rem;
 
 	if (unlikely(rem > 0))
 		pr_warn_ratelimited("netlink: %d bytes leftover after parsing attributes in process `%s'.\n",
 				    rem, current->comm);
 
-	err = 0;
-errout:
-	return err;
+	return 0;
 }
 EXPORT_SYMBOL(nla_parse);
 
