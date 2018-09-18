@@ -181,9 +181,13 @@ int nla_validate(const struct nlattr *head, int len, int maxtype,
 	int rem;
 
 	nla_for_each_attr(nla, head, len, rem) {
-		int err = validate_nla(nla, maxtype, policy, NULL);
+		static const char _msg[] = "Attribute failed policy validation";
+		const char *msg = _msg;
+		int err = validate_nla(nla, maxtype, policy, &msg);
 
 		if (err < 0) {
+			if (extack)
+				extack->_msg = msg;
 			NL_SET_BAD_ATTR(extack, nla);
 			return err;
 		}
