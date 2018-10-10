@@ -114,4 +114,12 @@ config USB_NET_RNDIS_WLAN
 
 	  If you choose to build a module, it'll be called rndis_wlan.
 
+config LIB80211_TEST
+	tristate "lib80211 test"
+	select LIB80211
+	select LIB80211_CRYPT_WEP
+	select LIB80211_CRYPT_TKIP
+	help
+	  whatever
+
 endif # WLAN
