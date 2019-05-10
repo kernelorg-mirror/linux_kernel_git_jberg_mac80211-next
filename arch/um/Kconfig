@@ -17,14 +17,12 @@ config UML
 	select GENERIC_CPU_DEVICES
 	select GENERIC_CLOCKEVENTS
 	select HAVE_GCC_PLUGINS
+	select HAS_DMA
 	select TTY # Needed for line.c
 
 config MMU
 	bool
 	default y
-
-config NO_IOMEM
-	def_bool y
 
 config ISA
 	bool
@@ -159,9 +157,6 @@ config MMAPPER
 	help
 	  This driver allows a host file to be used as emulated IO memory inside
 	  UML.
-
-config NO_DMA
-	def_bool y
 
 config PGTABLE_LEVELS
 	int
