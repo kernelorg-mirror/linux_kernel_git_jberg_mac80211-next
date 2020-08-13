@@ -8,6 +8,10 @@ objtool-$(SUBCMD_ORC) += check.o
 objtool-$(SUBCMD_ORC) += orc_gen.o
 objtool-$(SUBCMD_ORC) += orc_dump.o
 
+ifeq ($(SRCARCH)-$(SUBARCH),um-x86)
+CFLAGS += -I$(OUTPUT)../arch/x86/include
+endif
+
 objtool-y += builtin-check.o
 objtool-y += builtin-orc.o
 objtool-y += elf.o

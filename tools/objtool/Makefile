@@ -54,6 +54,10 @@ ifeq ($(SRCARCH),x86)
 	SUBCMD_CHECK := y
 	SUBCMD_ORC := y
 endif
+ifeq ($(SRCARCH)-$(SUBARCH),um-x86)
+	SUBCMD_CHECK := y
+	SUBCMD_ORC := y
+endif
 
 export SUBCMD_CHECK SUBCMD_ORC
 export srctree OUTPUT CFLAGS SRCARCH AWK

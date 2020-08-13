@@ -5,6 +5,20 @@
 #include <linux/uaccess.h>
 #include <linux/ptrace.h>
 
+enum stack_type {
+	STACK_TYPE_UNKNOWN,
+	STACK_TYPE_TASK,
+	STACK_TYPE_IRQ,
+	STACK_TYPE_SOFTIRQ,
+	STACK_TYPE_ENTRY,
+	STACK_TYPE_EXCEPTION,
+};
+
+struct stack_info {
+	enum stack_type type;
+	unsigned long *begin, *end, *next_sp;
+};
+
 struct stack_frame {
 	struct stack_frame *next_frame;
 	unsigned long return_address;

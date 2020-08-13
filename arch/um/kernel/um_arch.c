@@ -16,6 +16,7 @@
 
 #include <asm/processor.h>
 #include <asm/sections.h>
+#include <asm/unwind.h>
 #include <asm/setup.h>
 #include <as-layout.h>
 #include <arch.h>
@@ -350,6 +351,8 @@ void __init setup_arch(char **cmdline_p)
 	strlcpy(boot_command_line, command_line, COMMAND_LINE_SIZE);
 	*cmdline_p = command_line;
 	setup_hostinfo(host_info, sizeof host_info);
+
+	unwind_init();
 }
 
 void __init check_bugs(void)
