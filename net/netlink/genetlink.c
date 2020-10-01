@@ -123,7 +123,7 @@ static void genl_op_from_full(const struct genl_family *family,
 		op->policy = family->policy;
 }
 
-static int genl_get_cmd_full(u8 cmd, const struct genl_family *family,
+static int genl_get_cmd_full(u32 cmd, const struct genl_family *family,
 			     struct genl_ops *op)
 {
 	int i;
@@ -152,7 +152,7 @@ static void genl_op_from_small(const struct genl_family *family,
 	op->policy = family->policy;
 }
 
-static int genl_get_cmd_small(u8 cmd, const struct genl_family *family,
+static int genl_get_cmd_small(u32 cmd, const struct genl_family *family,
 			      struct genl_ops *op)
 {
 	int i;
@@ -166,7 +166,7 @@ static int genl_get_cmd_small(u8 cmd, const struct genl_family *family,
 	return -ENOENT;
 }
 
-static int genl_get_cmd(u8 cmd, const struct genl_family *family,
+static int genl_get_cmd(u32 cmd, const struct genl_family *family,
 			struct genl_ops *op)
 {
 	if (!genl_get_cmd_full(cmd, family, op))
@@ -1119,6 +1119,7 @@ static const struct nla_policy ctrl_policy_policy[] = {
 	[CTRL_ATTR_FAMILY_ID]	= { .type = NLA_U16 },
 	[CTRL_ATTR_FAMILY_NAME]	= { .type = NLA_NUL_STRING,
 				    .len = GENL_NAMSIZ - 1 },
+	[CTRL_ATTR_OP]		= { .type = NLA_U32 },
 };
 
 static int ctrl_dumppolicy_start(struct netlink_callback *cb)
@@ -1127,6 +1128,8 @@ static int ctrl_dumppolicy_start(struct netlink_callback *cb)
 	struct ctrl_dump_policy_ctx *ctx = (void *)cb->ctx;
 	struct nlattr **tb = info->attrs;
 	const struct genl_family *rt;
+	struct genl_ops op;
+	int err;
 
 	BUILD_BUG_ON(sizeof(*ctx) > sizeof(cb->ctx));
 
@@ -1147,10 +1150,21 @@ static int ctrl_dumppolicy_start(struct netlink_callback *cb)
 	if (!rt)
 		return -ENOENT;
 
-	if (!rt->policy)
+	if (tb[CTRL_ATTR_OP]) {
+		err = genl_get_cmd(nla_get_u32(tb[CTRL_ATTR_OP]), rt, &op);
+		if (err) {
+			NL_SET_BAD_ATTR(cb->extack, tb[CTRL_ATTR_OP]);
+			return err;
+		}
+	} else {
+		op.policy = rt->policy;
+		op.maxattr = rt->maxattr;
+	}
+
+	if (!op.policy)
 		return -ENODATA;
 
-	return netlink_policy_dump_start(rt->policy, rt->maxattr, &ctx->state);
+	return netlink_policy_dump_start(op.policy, op.maxattr, &ctx->state);
 }
 
 static int ctrl_dumppolicy(struct sk_buff *skb, struct netlink_callback *cb)
