@@ -1112,7 +1112,12 @@ static int genl_ctrl_event(int event, const struct genl_family *family,
 
 struct ctrl_dump_policy_ctx {
 	struct netlink_policy_dump_state *state;
+	const struct genl_family *rt;
+	unsigned int opidx;
+	u32 op;
 	u16 fam_id;
+	u8 policies:1,
+	   single_op:1;
 };
 
 static const struct nla_policy ctrl_policy_policy[] = {
@@ -1129,7 +1134,7 @@ static int ctrl_dumppolicy_start(struct netlink_callback *cb)
 	struct nlattr **tb = info->attrs;
 	const struct genl_family *rt;
 	struct genl_ops op;
-	int err;
+	int err, i;
 
 	BUILD_BUG_ON(sizeof(*ctx) > sizeof(cb->ctx));
 
@@ -1150,22 +1155,40 @@ static int ctrl_dumppolicy_start(struct netlink_callback *cb)
 	if (!rt)
 		return -ENOENT;
 
+	ctx->rt = rt;
+
 	if (tb[CTRL_ATTR_OP]) {
-		err = genl_get_cmd(nla_get_u32(tb[CTRL_ATTR_OP]), rt, &op);
+		ctx->single_op = true;
+		ctx->op = nla_get_u32(tb[CTRL_ATTR_OP]);
+
+		err = genl_get_cmd(ctx->op, rt, &op);
 		if (err) {
 			NL_SET_BAD_ATTR(cb->extack, tb[CTRL_ATTR_OP]);
 			return err;
 		}
-	} else {
-		op.policy = rt->policy;
-		op.maxattr = rt->maxattr;
+
+		if (!op.policy)
+			return -ENODATA;
+
+		return netlink_policy_dump_add_policy(&ctx->state, op.policy,
+						      op.maxattr);
 	}
 
-	if (!op.policy)
-		return -ENODATA;
+	for (i = 0; i < genl_get_cmd_cnt(rt); i++) {
+		genl_get_cmd_by_index(i, rt, &op);
 
-	return netlink_policy_dump_add_policy(&ctx->state, op.policy,
-					      op.maxattr);
+		if (op.policy) {
+			err = netlink_policy_dump_add_policy(&ctx->state,
+							     op.policy,
+							     op.maxattr);
+			if (err)
+				return err;
+		}
+	}
+
+	if (!ctx->state)
+		return -ENODATA;
+	return 0;
 }
 
 static void *ctrl_dumppolicy_prep(struct sk_buff *skb,
@@ -1186,12 +1209,83 @@ static void *ctrl_dumppolicy_prep(struct sk_buff *skb,
 	return hdr;
 }
 
+static int ctrl_dumppolicy_put_op(struct sk_buff *skb,
+				  struct netlink_callback *cb,
+			          struct genl_ops *op)
+{
+	struct ctrl_dump_policy_ctx *ctx = (void *)cb->ctx;
+	struct nlattr *nest_pol, *nest_op;
+	void *hdr;
+	int idx;
+
+	hdr = ctrl_dumppolicy_prep(skb, cb);
+	if (!hdr)
+		return -ENOBUFS;
+
+	nest_pol = nla_nest_start(skb, CTRL_ATTR_OP_POLICY);
+	if (!nest_pol)
+		goto err;
+
+	nest_op = nla_nest_start(skb, op->cmd);
+	if (!nest_op)
+		goto err;
+
+	idx = netlink_policy_dump_get_policy_idx(ctx->state,
+						 op->policy,
+						 op->maxattr);
+
+	/* for now both are always the same */
+	if (nla_put_u32(skb, CTRL_ATTR_POLICY_DO, idx) ||
+	    nla_put_u32(skb, CTRL_ATTR_POLICY_DUMP, idx))
+		goto err;
+
+	nla_nest_end(skb, nest_op);
+	nla_nest_end(skb, nest_pol);
+	genlmsg_end(skb, hdr);
+
+	return 0;
+err:
+	genlmsg_cancel(skb, hdr);
+	return -ENOBUFS;
+}
+
 static int ctrl_dumppolicy(struct sk_buff *skb, struct netlink_callback *cb)
 {
 	struct ctrl_dump_policy_ctx *ctx = (void *)cb->ctx;
+	void *hdr;
+
+	if (!ctx->policies) {
+		if (ctx->single_op) {
+			struct genl_ops op;
+			int err;
+
+			err = genl_get_cmd(ctx->op, ctx->rt, &op);
+			if (WARN_ON(err))
+				return skb->len;
+
+			if (ctrl_dumppolicy_put_op(skb, cb, &op))
+				return skb->len;
+
+			/* skip loop below */
+			ctx->opidx = genl_get_cmd_cnt(ctx->rt);
+		}
+
+		while (ctx->opidx < genl_get_cmd_cnt(ctx->rt)) {
+			struct genl_ops op;
+
+			genl_get_cmd_by_index(ctx->opidx, ctx->rt, &op);
+
+			if (ctrl_dumppolicy_put_op(skb, cb, &op))
+				return skb->len;
+
+			ctx->opidx++;
+		}
+
+		/* completed with the per-op policy index list */
+		ctx->policies = true;
+	}
 
 	while (netlink_policy_dump_loop(ctx->state)) {
-		void *hdr;
 		struct nlattr *nest;
 
 		hdr = ctrl_dumppolicy_prep(skb, cb);
@@ -1208,13 +1302,12 @@ static int ctrl_dumppolicy(struct sk_buff *skb, struct netlink_callback *cb)
 		nla_nest_end(skb, nest);
 
 		genlmsg_end(skb, hdr);
-		continue;
-
-nla_put_failure:
-		genlmsg_cancel(skb, hdr);
-		break;
 	}
 
+	return skb->len;
+
+nla_put_failure:
+	genlmsg_cancel(skb, hdr);
 	return skb->len;
 }
 
