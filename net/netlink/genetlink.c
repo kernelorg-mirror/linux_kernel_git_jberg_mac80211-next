@@ -1164,7 +1164,8 @@ static int ctrl_dumppolicy_start(struct netlink_callback *cb)
 	if (!op.policy)
 		return -ENODATA;
 
-	return netlink_policy_dump_start(op.policy, op.maxattr, &ctx->state);
+	return netlink_policy_dump_add_policy(&ctx->state, op.policy,
+					      op.maxattr);
 }
 
 static int ctrl_dumppolicy(struct sk_buff *skb, struct netlink_callback *cb)
