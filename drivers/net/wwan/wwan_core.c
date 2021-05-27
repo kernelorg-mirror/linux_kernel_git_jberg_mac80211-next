@@ -13,6 +13,8 @@
 #include <linux/slab.h>
 #include <linux/types.h>
 #include <linux/wwan.h>
+#include <net/rtnetlink.h>
+#include <uapi/linux/wwan.h>
 
 #define WWAN_MAX_MINORS 256 /* 256 minors allowed with register_chrdev() */
 
@@ -524,24 +526,102 @@ static const struct file_operations wwan_port_fops = {
 	.llseek = noop_llseek,
 };
 
-static int __init wwan_init(void)
+static void wwan_rtnl_setup(struct net_device *dev)
 {
-	wwan_class = class_create(THIS_MODULE, "wwan");
-	if (IS_ERR(wwan_class))
-		return PTR_ERR(wwan_class);
+	/* FIXME - how do we implement this? we dont have any data
+	 * at this point ..., i.e. we can't look up the context yet?
+	 * We'd need data[IFLA_WWAN_DEV_NAME], see wwan_rtnl_newlink().
+	 */
+}
 
-	/* chrdev used for wwan ports */
-	wwan_major = register_chrdev(0, "wwan_port", &wwan_port_fops);
-	if (wwan_major < 0) {
-		class_destroy(wwan_class);
-		return wwan_major;
-	}
+static int wwan_rtnl_validate(struct nlattr *tb[], struct nlattr *data[],
+			      struct netlink_ext_ack *extack)
+{
+	if (!data)
+		return -EINVAL;
+
+	if (!data[IFLA_WWAN_LINK_ID])
+		return -EINVAL;
 
 	return 0;
 }
 
+static struct device_type wwan_type = { .name = "wwan" };
+
+static int wwan_rtnl_newlink(struct net *src_net, struct net_device *dev,
+			     struct nlattr *tb[], struct nlattr *data[],
+			     struct netlink_ext_ack *extack)
+{
+	//struct device *device;
+	SET_NETDEV_DEVTYPE(dev, &wwan_type);
+
+	/* TODO
+	 *
+	 * This isn't really hard, we use data[IFLA_WWAN_DEV_NAME] to look
+	 * up the right device in our list, get the ops, and call them.
+	 */
+
+	// SET_NETDEV_DEV(dev, device);
+
+	// call ops->newlink(ctxt, ...)
+	return -EIO;
+}
+
+static void wwan_rtnl_dellink(struct net_device *dev, struct list_head *head)
+{
+	/* TBD - probably simple, but we need our own priv data
+	 * in the netdev to look up the context/ops
+	 */
+}
+
+static const struct nla_policy wwan_rtnl_policy[IFLA_WWAN_MAX + 1] = {
+	[IFLA_WWAN_DEV_NAME] = { .type = NLA_NUL_STRING },
+	[IFLA_WWAN_LINK_ID] = { .type = NLA_U32 },
+};
+
+static struct rtnl_link_ops wwan_rtnl_link_ops __read_mostly = {
+	.kind = "wwan",
+	.maxtype = __IFLA_WWAN_MAX,
+	.priv_size = WWAN_MAX_NETDEV_PRIV,
+	.setup = wwan_rtnl_setup,
+	.validate = wwan_rtnl_validate,
+	.newlink = wwan_rtnl_newlink,
+	.dellink = wwan_rtnl_dellink,
+	.policy = wwan_rtnl_policy,
+};
+
+static int __init wwan_init(void)
+{
+	int err;
+
+	err = rtnl_link_register(&wwan_rtnl_link_ops);
+	if (err)
+		return err;
+
+	wwan_class = class_create(THIS_MODULE, "wwan");
+	if (IS_ERR(wwan_class)) {
+		err = PTR_ERR(wwan_class);
+		goto unregister;
+	}
+
+	/* chrdev used for wwan ports */
+	wwan_major = register_chrdev(0, "wwan_port", &wwan_port_fops);
+	if (wwan_major < 0) {
+		err = wwan_major;
+		goto destroy;
+	}
+
+	err = 0;
+destroy:
+	class_destroy(wwan_class);
+unregister:
+	rtnl_link_unregister(&wwan_rtnl_link_ops);
+	return err;
+}
+
 static void __exit wwan_exit(void)
 {
+	rtnl_link_unregister(&wwan_rtnl_link_ops);
 	unregister_chrdev(wwan_major, "wwan_port");
 	class_destroy(wwan_class);
 }
