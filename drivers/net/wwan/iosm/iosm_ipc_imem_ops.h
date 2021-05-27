@@ -29,7 +29,6 @@
 /* IP MUX channel range */
 #define IP_MUX_SESSION_START 1
 #define IP_MUX_SESSION_END 8
-#define MAX_IP_MUX_SESSION IP_MUX_SESSION_END
 
 /**
  * ipc_imem_sys_port_open - Open a port link to CP.

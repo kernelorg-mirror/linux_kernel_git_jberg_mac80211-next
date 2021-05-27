@@ -567,18 +567,11 @@ static int __init iosm_ipc_driver_init(void)
 		return -1;
 	}
 
-	if (rtnl_link_register(&iosm_netlink)) {
-		pr_err("IOSM RTNL register failed");
-		pci_unregister_driver(&iosm_ipc_driver);
-		return -1;
-	}
-
 	return 0;
 }
 
 static void __exit iosm_ipc_driver_exit(void)
 {
-	rtnl_link_unregister(&iosm_netlink);
 	pci_unregister_driver(&iosm_ipc_driver);
 }
 

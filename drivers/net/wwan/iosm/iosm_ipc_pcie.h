@@ -12,8 +12,6 @@
 
 #include "iosm_ipc_irq.h"
 
-extern struct rtnl_link_ops iosm_netlink;
-
 /* Device ID */
 #define INTEL_CP_DEVICE_7560_ID 0x7560
 
