@@ -312,7 +312,8 @@ int ipc_wwan_receive(struct iosm_wwan *ipc_wwan, struct sk_buff *skb_arg,
 		     bool dss, int if_id)
 {
 	struct sk_buff *skb = skb_arg;
-	struct net_device_stats stats;
+	struct net_device_stats *stats;
+	struct iosm_net_link *priv;
 	int ret;
 
 	if ((skb->data[0] & IOSM_IP_TYPE_MASK) == IOSM_IP_TYPE_IPV4)
@@ -325,19 +326,27 @@ int ipc_wwan_receive(struct iosm_wwan *ipc_wwan, struct sk_buff *skb_arg,
 
 	if (if_id < (IP_MUX_SESSION_START - 1) ||
 	    if_id > (IP_MUX_SESSION_END - 1)) {
-		dev_kfree_skb(skb);
-		return -EINVAL;
+		ret = -EINVAL;
+		goto free;
 	}
 
 	rcu_read_lock();
-	skb->dev = rcu_dereference(ipc_wwan->sub_netlist[if_id])->netdev;
-	stats = rcu_dereference(ipc_wwan->sub_netlist[if_id])->netdev->stats;
-	stats.rx_packets++;
-	stats.rx_bytes += skb->len;
+	priv = rcu_dereference(ipc_wwan->sub_netlist[if_id]);
+	if (!priv) {
+		ret = -EINVAL;
+		goto unlock;
+	}
+	skb->dev = priv->netdev;
+	stats = &priv->netdev->stats;
+	stats->rx_packets++;
+	stats->rx_bytes += skb->len;
 
 	ret = netif_rx(skb);
+	skb = NULL;
+unlock:
 	rcu_read_unlock();
-
+free:
+	dev_kfree_skb(skb);
 	return ret;
 }
 
